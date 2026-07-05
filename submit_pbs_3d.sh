@@ -33,6 +33,9 @@ DZ="${DZ:-8}"
 LY="${LY:-10}"                     # periodic y extent in km
 DY="${DY:-0}"                      # y spacing [m]; 0 = isotropic horizontal (Δy = Δx)
 STOP="${STOP:-5}"                  # stop time in DAYS
+MAXDT="${MAXDT:-60}"               # max time step [s]. Buoyancy spin-up is slow, so 5 s wastes
+                                   # steps (CFL~1e-4); 60 s lets the wizard run near CFL~0.3-0.4
+                                   # once the flow develops. Lower it if you see CFL near 0.5.
 TIDE="${TIDE:-0.0}"
 TIDE_PERIOD="${TIDE_PERIOD:-12.42}"
 BATHY="${BATHY:-pineislandbath.csv}"
@@ -41,7 +44,7 @@ mkdir -p "$OUTDIR" logs
 
 time $JULIA --project --pkgimages=no iceshelfcavity3d.jl \
     --arch=gpu --aspect=4 --dz="$DZ" --Ly="$LY" --dy="$DY" --bathymetry="$BATHY" \
-    --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt=5 \
+    --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt="$MAXDT" \
     --tide="$TIDE" --tide_period="$TIDE_PERIOD" \
     --cg_reltol=1e-5 --cg_maxiter=30 \
     --wall_time_limit=11.5 --outdir="$OUTDIR" --simname="$SIM" \

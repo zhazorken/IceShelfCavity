@@ -1,0 +1,2 @@
+# Keeps the logs/ directory in git so a fresh clone has it before the first qsub.
+# PBS writes -o/-e here at job launch; if the directory is missing the job is held.

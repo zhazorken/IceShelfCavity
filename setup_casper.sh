@@ -8,6 +8,11 @@
 set -e
 cd "$(dirname "$0")"
 
+# Ensure the PBS log directory exists BEFORE any qsub — the #PBS -o/-e directives write here at
+# job launch, and a missing logs/ leaves the job stuck in the Held (H) state. (git doesn't clone
+# empty dirs, so a fresh clone may not have it despite logs/.gitkeep on some setups.)
+mkdir -p logs
+
 # Keep the Julia depot on /glade/work ($HOME quota is small). Instantiating needs NO HPC modules
 # (CUDA.jl bundles its own toolkit; the GPU driver is only needed at run time), so this just
 # needs a working `julia`. If `which julia` is empty, install juliaup first:

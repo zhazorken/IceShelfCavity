@@ -39,7 +39,7 @@ def main():
     fn = os.path.join(a.dir, f"{a.simname}.nc")
     if not os.path.exists(fn):
         sys.exit(f"not found: {fn}")
-    ds = xr.open_dataset(fn, decode_times=False)
+    ds = xr.open_dataset(fn, decode_times=False).squeeze(drop=True)  # drop singleton y (3-D midy slice)
 
     # geometry (same source of truth as the model) for the ice/sea-floor mask
     csv = "data/pineislandbath.csv" if os.path.exists("data/pineislandbath.csv") else "pineislandbath.csv"

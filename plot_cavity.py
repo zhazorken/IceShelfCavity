@@ -35,7 +35,7 @@ if not os.path.exists(ncfile):
     raise SystemExit(f"{ncfile} not found. Pass the run name (and --dir), e.g.\n"
                      f"    python3 plot_cavity.py <simname> --dir {outdir}\n"
                      f"Available in {outdir}/: {avail or '(none — run the model first)'}")
-ds = xr.open_dataset(ncfile, decode_times=False).isel(time=-1)
+ds = xr.open_dataset(ncfile, decode_times=False).isel(time=-1).squeeze(drop=True)  # squeeze drops the singleton y of a 3-D midy slice
 
 # Geometry (x in CSV is km -> m), same source of truth as the model
 geom = pd.read_csv(csv_path)

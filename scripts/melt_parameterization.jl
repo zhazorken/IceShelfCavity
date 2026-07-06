@@ -52,6 +52,17 @@ const z_ref  = 1.0      # reference height [m] at which the shear drag Cd applie
 const u★min  = 1.0e-5   # tiny floor on u★ [m s⁻¹] (numerical safety only)
 #---
 
+#+++ Basal-slope factor for the convective branch (McConnochie & Kerr sloping-wall convection:
+#    steep faces shed meltwater and convect vigorously; near-horizontal bases pool it, suppressing
+#    convection). `sfac` multiplies the convective friction velocity; it is precomputed per x on
+#    the CPU by the driver via `slope_factor(sinθ, sinθ_ref)` and looked up in the kernel, so the
+#    kernel stays cheap and GPU-safe. Normalised to ≈1 at the reference slope; clamped to avoid
+#    extremes. Calibrated so steep (~16°) slopes reach ~70 m/yr for warm PIG thermal driving.
+const SLOPE_FMIN = 0.3
+const SLOPE_FMAX = 3.0
+@inline slope_factor(sinθ, sinθ_ref) = clamp(cbrt(max(sinθ, 1e-4) / sinθ_ref), SLOPE_FMIN, SLOPE_FMAX)
+#---
+
 #+++ Core solver
 """
     solve_melt(speed, T, S, z, Cd, z1)
@@ -62,14 +73,15 @@ Three-equation melt at one ice-base point, using u★ = max(shear, convective):
   • the convective branch is velocity-independent (Kerr) so melt stays realistic at low shear.
 Returns `(ṁ, T_b, S_b, γᵀ, γˢ)` with ṁ>0 for melting.
 """
-@inline function solve_melt(speed, T, S, z, Cd, z1)
+@inline function solve_melt(speed, T, S, z, Cd, z1, sfac)
     # resolution-independent shear friction velocity (log law); z₀ chosen so u★=√(Cd)·U at z_ref
     z₀ = z_ref * exp(-κᵛᵏ / sqrt(Cd))
     u★_shear = κᵛᵏ * speed / log(max(z1, 1.001z₀) / z₀)
 
-    # convective (buoyancy-driven) equivalent friction velocity: γᵀ_conv = ρⁱLᶠc_B|ΔT|^{1/3}/(ρʷcᵖʷ)
+    # convective (buoyancy-driven) equivalent friction velocity: γᵀ_conv = ρⁱLᶠc_B|ΔT|^{1/3}/(ρʷcᵖʷ),
+    # times the basal-slope factor `sfac` (=1 on the reference slope; larger on steep faces).
     ΔT = T - (λ₁ * S + λ₂ + λ₃ * z)                         # thermal driving
-    u★_conv = (ρⁱ * Lᶠ * c_B / (ρʷ * cᵖʷ * Γᵀ)) * cbrt(abs(ΔT))
+    u★_conv = sfac * (ρⁱ * Lᶠ * c_B / (ρʷ * cᵖʷ * Γᵀ)) * cbrt(abs(ΔT))
 
     u★ = max(u★_shear, u★_conv, u★min)
     γᵀ = Γᵀ * u★
@@ -89,26 +101,30 @@ end
 #---
 
 #+++ Tracer flux boundary conditions at the ice underside (2-D: x,z ; 3-D: x,y,z)
-# `p` carries (Cd, z1). Signs: contact with ice cools the near-ice ocean toward freezing and
-# freshens it. If a short test shows warming/salinifying, flip the sign of the returns.
+# `p` carries (Cd, z1, sfac, dx, Nx): sfac is the per-x basal-slope factor array (built by the
+# driver), looked up by the cell's x-index. Signs: contact with ice cools the near-ice ocean
+# toward freezing and freshens it. If a short test warms/salinifies, flip the sign of the returns.
+@inline _slopefac(x, p) = @inbounds p.sfac[clamp(unsafe_trunc(Int, x / p.dx) + 1, 1, p.Nx)]
+
 @inline function melt_heat_flux(x, z, t, u, v, w, T, S, p)
-    _, T_b, _, γᵀ, _ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1)
+    _, T_b, _, γᵀ, _ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1, _slopefac(x, p))
     return γᵀ * (T_b - T)        # < 0 when T > T_b  ⇒ ocean loses heat to melting
 end
 
 @inline function melt_salt_flux(x, z, t, u, v, w, T, S, p)
-    _, _, S_b, _, γˢ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1)
+    _, _, S_b, _, γˢ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1, _slopefac(x, p))
     return γˢ * (S_b - S)        # < 0 when S > S_b  ⇒ freshening near the ice
 end
 
-# 3-D variants (x, y, z, t, …) for the y-extruded periodic run (iceshelfcavity3d.jl).
+# 3-D variants (x, y, z, t, …) for the y-extruded periodic run (iceshelfcavity3d.jl). The slope
+# factor depends on x only (geometry is extruded in y).
 @inline function melt_heat_flux_3d(x, y, z, t, u, v, w, T, S, p)
-    _, T_b, _, γᵀ, _ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1)
+    _, T_b, _, γᵀ, _ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1, _slopefac(x, p))
     return γᵀ * (T_b - T)
 end
 
 @inline function melt_salt_flux_3d(x, y, z, t, u, v, w, T, S, p)
-    _, _, S_b, _, γˢ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1)
+    _, _, S_b, _, γˢ = solve_melt(sqrt(u^2 + v^2 + w^2), T, S, z, p.Cd, p.z1, _slopefac(x, p))
     return γˢ * (S_b - S)
 end
 #---

@@ -29,6 +29,7 @@ for name in "${RUNS[@]}"; do
         [ -f "$OUTDIR/${t}.nc" ] || continue
         echo "  -- $t"
         $PY plot_cavity.py       "$t" --dir "$OUTDIR" || echo "     (section plot skipped)"
+        $PY plot_melt_rate.py    "$t" --dir "$OUTDIR" || echo "     (melt-rate diagnostic skipped)"
         $PY make_cavity_movie.py "$t" --dir "$OUTDIR" || echo "     (movie skipped)"
     done
     $PY check_melt_sign.py "${TARGETS[0]}" --dir "$OUTDIR" || echo "  (sign check skipped)"

@@ -63,6 +63,8 @@ function parse_command_line_arguments()
         "--tide";        help = "Barotropic tide amplitude [m/s] at the shelf front (0 = off)"; default = 0.0; arg_type = Float64
         "--tide_period"; help = "Tidal period in HOURS (12.42 = M2)"; default = 12.42; arg_type = Float64
         "--melt_Cd";     help = "Shear drag for the melt closure (Wild et al.; default 0.0022). Melt = max(shear, convective[Kerr])"; default = 0.0022; arg_type = Float64
+        "--melt_slope";  help = "Basal-slope-dependent convective melt (McConnochie & Kerr): 1 = on, 0 = off"; default = 1; arg_type = Int
+        "--slope_ref";   help = "Reference sinθ where the slope factor = 1 (default 0.03 ≈ 1.7°)"; default = 0.03; arg_type = Float64
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -173,8 +175,17 @@ w_bcs = FieldBoundaryConditions(immersed = τʷ)
 # Melt closure = max(shear, convective) (Wild et al.; scripts/melt_parameterization.jl). The
 # convective (Kerr) branch is velocity-independent, so melt is PIG-realistic even at low shear.
 # --melt_Cd = shear drag; z₁ (first-cell height) makes the shear u★ resolution-independent.
-melt_params = (; Cd = params.melt_Cd, z1 = z₁)
-@info "Melt closure = max(shear[Cd], convective[Kerr])" melt_Cd=params.melt_Cd z1=z₁
+# Per-x basal-slope factor from the ice-base geometry (extruded in y); indexed by x in the kernel.
+Δx_grid = params.Lx / params.Nx
+sfac_cpu = map(1:params.Nx) do i
+    xc = (i - 0.5) * Δx_grid; δ = 0.5Δx_grid
+    dtopdx = (top_interp(xc + δ) - top_interp(xc - δ)) / (2δ)
+    sinθ = abs(dtopdx) / sqrt(1 + dtopdx^2)
+    params.melt_slope == 1 ? slope_factor(sinθ, params.slope_ref) : 1.0
+end
+sfac_dev = on_architecture(arch, collect(Float64, sfac_cpu))
+melt_params = (; Cd = params.melt_Cd, z1 = z₁, sfac = sfac_dev, dx = Δx_grid, Nx = params.Nx)
+@info "Melt closure = max(shear[Cd], convective[Kerr·slope])" melt_Cd=params.melt_Cd slope=(params.melt_slope==1) slope_factor_range=(minimum(sfac_cpu), maximum(sfac_cpu))
 T_melt = FluxBoundaryCondition(melt_heat_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 S_melt = FluxBoundaryCondition(melt_salt_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 T_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = T_melt), east = ValueBoundaryCondition(Tᵉ))

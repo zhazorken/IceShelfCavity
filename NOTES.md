@@ -126,9 +126,20 @@ cavity, higher on the deep warm steep grounding line) — check: grounding line 
 ≈ 15, near the cold front ≈ 3 m/yr, with the convective branch dominant during spin-up. Momentum
 drag (the τ BCs) is **separate** and still uses the roughness drag.
 
+**Basal-slope dependence** (McConnochie & Kerr): the convective branch is multiplied by a
+per-x slope factor `clamp((sinθ/sinθ_ref)^{1/3}, 0.3, 3)` — steep faces shed meltwater and
+convect vigorously, near-horizontal bases pool it. The factor is precomputed from the ice-base
+geometry on the CPU at setup and indexed by x in the kernel (GPU-safe). With the default
+`--slope_ref=0.03` (≈1.7°) it gives ~76 m/yr on a steep 16° grounding-line face down to ~5 m/yr
+on the flat cold front. Toggle with `--melt_slope` (1 on / 0 off), retune with `--slope_ref`.
+
+**Melt-rate diagnostic**: the model doesn't output ṁ as a field, so `plot_melt_rate.py`
+reconstructs ṁ(x) along the ice base from the near-ice u,v,w,T,S using this exact closure, and
+plots it against the PIG 1–80 m/yr band and vs. basal slope (`postprocess.sh` runs it).
+
 Applied via field-dependent flux BCs on the `top` immersed faces (downward-facing ice base).
-**Next refinements** (earmarked): make the convective branch explicitly basal-slope-dependent
-(McConnochie & Kerr), and treat melt on steeply sloping ice faces (needs face tagging).
+Next refinement (earmarked): melt on steeply sloping ice *faces* (east/west immersed faces),
+which needs face-type tagging.
 
 ## Tuning knobs
 - **Stratification** (`scripts/stratification.jl`): warm/cold end members `aT,cT / aS,cS`;

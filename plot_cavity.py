@@ -87,12 +87,13 @@ def solid_mask(da):
 OUTLIER_DESPECKLE = {"T": 0.5, "S": 0.3}   # replace cells > this far from local median; {} disables
 OUTLIER_K         = 1
 
-panels = [("u", "RdBu_r", dict(robust=True),         "u  (m/s)  [cross-cavity]"),
+panels = [("u", "RdBu_r", dict(robust=True),         "u  (m/s)  [cross-slope / overturning]"),
+          ("v", "RdBu_r", dict(robust=True),         "v  (m/s)  [ALONG-slope: geostrophic plume]"),
           ("w", "RdBu_r", dict(robust=True),         "w  (m/s)  [vertical]"),
           ("T", "inferno", dict(robust=True),        "T  (°C)"),
           ("S", "cividis", dict(robust=True),        "S  (psu)")]
 
-fig, axes = plt.subplots(nrows=len(panels), figsize=(11, 10.5), sharex=True, sharey=True)
+fig, axes = plt.subplots(nrows=len(panels), figsize=(11, 2.35*len(panels)), sharex=True, sharey=True)
 plt.subplots_adjust(hspace=0.12)
 
 for ax, (var, cmap, kw, label) in zip(axes, panels):

@@ -65,6 +65,7 @@ function parse_command_line_arguments()
         "--melt_Cd";     help = "Shear drag for the melt closure (Wild et al.; default 0.0022). Melt = max(shear, convective[Kerr])"; default = 0.0022; arg_type = Float64
         "--melt_slope";  help = "Basal-slope-dependent convective melt (McConnochie & Kerr): 1 = on, 0 = off"; default = 1; arg_type = Int
         "--slope_ref";   help = "Reference sinθ where the slope factor = 1 (default 0.03 ≈ 1.7°)"; default = 0.03; arg_type = Float64
+        "--z0";          help = "Momentum roughness length [m] (lower ⇒ weaker drag ⇒ faster plume; default 0.1)"; default = 0.1; arg_type = Float64
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -112,7 +113,7 @@ let
     f = FPlane(latitude=-75).f
     N² = 1e-5/second^2
     T_inertial = 2π / abs(f)
-    z₀ = 0.1meters
+    z₀ = params.z0 * meters
 
     global params = merge(params, Base.@locals)
 end

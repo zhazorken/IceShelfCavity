@@ -168,6 +168,11 @@ function parse_command_line_arguments()
             default = 0.03
             arg_type = Float64
 
+        "--z0"
+            help = "Momentum roughness length [m] (lower ⇒ weaker drag ⇒ faster plume; default 0.1)."
+            default = 0.1
+            arg_type = Float64
+
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -226,7 +231,7 @@ let
 
     #+++ Scales
     T_inertial = 2π / abs(f)
-    z₀ = 0.1meters                    # under-ice / sea-bed roughness length (Δz≈2 m cavity grid)
+    z₀ = params.z0 * meters           # under-ice / sea-bed roughness length (--z0; lower ⇒ faster plume)
     #---
 
     global params = merge(params, Base.@locals)

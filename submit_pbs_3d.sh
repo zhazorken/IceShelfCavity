@@ -29,8 +29,11 @@ JULIA="${JULIA:-julia}"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES ; Julia: $($JULIA --version 2>/dev/null)"
 
 SIM="${SIM:-iceshelfcavity3d}"
-DZ="${DZ:-10}"                     # slightly coarser (Δx=Δy=40 m, ~30 M cells) for a cheaper long spin-up
+DZ="${DZ:-10}"                     # vertical spacing (m); Δx=Δy = ASPECT·DZ
+ASPECT="${ASPECT:-4}"              # horizontal:vertical aspect. Raise it to refine Δz WITHOUT adding
+                                   # horizontal cells (e.g. DZ=5,ASPECT=8 keeps Δx=Δy=40 m, halves Δz)
 LY="${LY:-10}"                     # periodic y extent in km
+Z0="${Z0:-0.1}"                    # momentum roughness (m); lower ⇒ weaker drag ⇒ faster plume
 DY="${DY:-0}"                      # y spacing [m]; 0 = isotropic horizontal (Δy = Δx)
 STOP="${STOP:-5}"                  # stop time in DAYS
 MAXDT="${MAXDT:-60}"               # max time step [s]. Buoyancy spin-up is slow, so 5 s wastes
@@ -45,7 +48,7 @@ OUTDIR="${OUTDIR:-/glade/work/$USER/cavity_runs}"
 mkdir -p "$OUTDIR" logs
 
 time $JULIA --project --pkgimages=no iceshelfcavity3d.jl \
-    --arch=gpu --aspect=4 --dz="$DZ" --Ly="$LY" --dy="$DY" --bathymetry="$BATHY" \
+    --arch=gpu --aspect="$ASPECT" --dz="$DZ" --Ly="$LY" --dy="$DY" --z0="$Z0" --bathymetry="$BATHY" \
     --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt="$MAXDT" \
     --tide="$TIDE" --tide_period="$TIDE_PERIOD" --melt_Cd="$MELT_CD" \
     --cg_reltol=1e-5 --cg_maxiter=30 \

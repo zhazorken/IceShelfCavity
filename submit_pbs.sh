@@ -40,6 +40,7 @@ DZ="${DZ:-2}"
 STOP="${STOP:-10}"                 # stop time in DAYS (override for a spin-up phase, e.g. STOP=1)
 TIDE="${TIDE:-0.0}"                # barotropic tide amplitude [m/s] at the shelf front (0 = off)
 TIDE_PERIOD="${TIDE_PERIOD:-12.42}"
+MELT_CD="${MELT_CD:-0.0022}"       # shear drag for the Wild et al. max(shear,convective) melt closure
 BATHY="${BATHY:-pineislandbath.csv}"
 OUTDIR="${OUTDIR:-/glade/work/$USER/cavity_runs}"
 mkdir -p "$OUTDIR" logs
@@ -51,7 +52,7 @@ mkdir -p "$OUTDIR" logs
 time $JULIA --project --pkgimages=no iceshelfcavity.jl \
     --arch=gpu --aspect=4 --dz="$DZ" --bathymetry="$BATHY" \
     --stop_time="$STOP" --output_interval=30 --checkpoint_interval=0.5 --max_dt=5 \
-    --tide="$TIDE" --tide_period="$TIDE_PERIOD" \
+    --tide="$TIDE" --tide_period="$TIDE_PERIOD" --melt_Cd="$MELT_CD" \
     --cg_reltol=1e-5 --cg_maxiter=30 --animate=false \
     --wall_time_limit=11.5 --outdir="$OUTDIR" --simname="$SIM" \
     2>&1 | tee logs/${SIM}.out

@@ -29,7 +29,7 @@ JULIA="${JULIA:-julia}"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES ; Julia: $($JULIA --version 2>/dev/null)"
 
 SIM="${SIM:-iceshelfcavity3d}"
-DZ="${DZ:-8}"
+DZ="${DZ:-10}"                     # slightly coarser (Δx=Δy=40 m, ~30 M cells) for a cheaper long spin-up
 LY="${LY:-10}"                     # periodic y extent in km
 DY="${DY:-0}"                      # y spacing [m]; 0 = isotropic horizontal (Δy = Δx)
 STOP="${STOP:-5}"                  # stop time in DAYS
@@ -38,6 +38,8 @@ MAXDT="${MAXDT:-60}"               # max time step [s]. Buoyancy spin-up is slow
                                    # once the flow develops. Lower it if you see CFL near 0.5.
 TIDE="${TIDE:-0.0}"
 TIDE_PERIOD="${TIDE_PERIOD:-12.42}"
+MELT_CD="${MELT_CD:-0.0022}"       # shear drag for the melt closure (Wild et al.); melt is
+                                   # max(shear[this Cd], convective[Kerr]) — PIG-realistic
 BATHY="${BATHY:-pineislandbath.csv}"
 OUTDIR="${OUTDIR:-/glade/work/$USER/cavity_runs}"
 mkdir -p "$OUTDIR" logs
@@ -45,7 +47,7 @@ mkdir -p "$OUTDIR" logs
 time $JULIA --project --pkgimages=no iceshelfcavity3d.jl \
     --arch=gpu --aspect=4 --dz="$DZ" --Ly="$LY" --dy="$DY" --bathymetry="$BATHY" \
     --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt="$MAXDT" \
-    --tide="$TIDE" --tide_period="$TIDE_PERIOD" \
+    --tide="$TIDE" --tide_period="$TIDE_PERIOD" --melt_Cd="$MELT_CD" \
     --cg_reltol=1e-5 --cg_maxiter=30 \
     --wall_time_limit=11.5 --outdir="$OUTDIR" --simname="$SIM" \
     2>&1 | tee logs/${SIM}.out

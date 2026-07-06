@@ -62,6 +62,7 @@ function parse_command_line_arguments()
         "--cg_maxiter";           default = 30;   arg_type = Int
         "--tide";        help = "Barotropic tide amplitude [m/s] at the shelf front (0 = off)"; default = 0.0; arg_type = Float64
         "--tide_period"; help = "Tidal period in HOURS (12.42 = M2)"; default = 12.42; arg_type = Float64
+        "--melt_Cd";     help = "Shear drag for the melt closure (Wild et al.; default 0.0022). Melt = max(shear, convective[Kerr])"; default = 0.0022; arg_type = Float64
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -169,8 +170,13 @@ u_bcs = FieldBoundaryConditions(immersed = τᵘ,
 v_bcs = FieldBoundaryConditions(immersed = τᵛ)
 w_bcs = FieldBoundaryConditions(immersed = τʷ)
 
-T_melt = FluxBoundaryCondition(melt_heat_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=(; Cᴰ = params.c_dz))
-S_melt = FluxBoundaryCondition(melt_salt_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=(; Cᴰ = params.c_dz))
+# Melt closure = max(shear, convective) (Wild et al.; scripts/melt_parameterization.jl). The
+# convective (Kerr) branch is velocity-independent, so melt is PIG-realistic even at low shear.
+# --melt_Cd = shear drag; z₁ (first-cell height) makes the shear u★ resolution-independent.
+melt_params = (; Cd = params.melt_Cd, z1 = z₁)
+@info "Melt closure = max(shear[Cd], convective[Kerr])" melt_Cd=params.melt_Cd z1=z₁
+T_melt = FluxBoundaryCondition(melt_heat_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
+S_melt = FluxBoundaryCondition(melt_salt_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 T_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = T_melt), east = ValueBoundaryCondition(Tᵉ))
 S_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = S_melt), east = ValueBoundaryCondition(Sᵉ))
 #---

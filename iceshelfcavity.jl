@@ -152,6 +152,12 @@ function parse_command_line_arguments()
             default = 12.42
             arg_type = Float64
 
+        "--melt_Cd"
+            help = "Shear drag coefficient for the melt closure at the reference height (Wild et al.;"*
+                   " default 0.0022). Melt = max(shear[this Cd], convective[Kerr]); resolution-independent."
+            default = 0.0022
+            arg_type = Float64
+
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -286,8 +292,15 @@ w_bcs = FieldBoundaryConditions(immersed = τʷ)
 
 # Tracers: three-equation melt flux on the ice-shelf base (`top` immersed faces) and the
 # ambient two-layer profiles prescribed at the eastern open boundary.
-T_melt = FluxBoundaryCondition(melt_heat_flux, field_dependencies=(:u, :v, :w, :T, :S), parameters=(; Cᴰ = params.c_dz))
-S_melt = FluxBoundaryCondition(melt_salt_flux, field_dependencies=(:u, :v, :w, :T, :S), parameters=(; Cᴰ = params.c_dz))
+#
+# Melt closure = max(shear, convective) (Wild et al.; scripts/melt_parameterization.jl). The
+# convective (Kerr) branch is velocity-independent, so melt stays PIG-realistic even while the
+# plume is still spinning up. --melt_Cd is the shear drag; z₁ (first-cell height) makes the
+# shear friction velocity resolution-independent (log law). Momentum drag BCs are separate.
+melt_params = (; Cd = params.melt_Cd, z1 = z₁)
+@info "Melt closure = max(shear[Cd], convective[Kerr])" melt_Cd=params.melt_Cd z1=z₁
+T_melt = FluxBoundaryCondition(melt_heat_flux, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
+S_melt = FluxBoundaryCondition(melt_salt_flux, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 
 T_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = T_melt),
                                 east = ValueBoundaryCondition(Tᵉ))

@@ -107,17 +107,28 @@ velocities blowing up near walls), raise `--cg_maxiter` or tighten `--cg_reltol`
 
 ## Melt parameterization (`scripts/melt_parameterization.jl`)
 
-Standard three-equation closure (Holland & Jenkins 1999; Jenkins 2011; ISOMIP+ coefficients).
-Turbulent exchange velocities use the **same** drag coefficient as the momentum BC
-(γ = Γ·u★, u★ = √(Cᴰ)·|U|, |U| = √(u²+v²+w²)), so momentum/heat/salt exchange are consistent.
-The depth term of the liquidus (`λ₃·z`) makes it appropriate for a deep cavity: near the
-grounding line (z ≈ −1000 m) the in-situ freezing point is ≈ −2.6 °C, so warm mCDW at ~+1 °C
-gives a large thermal driving and the high grounding-line melt the talk highlights.
+**Melt = max(shear, convective)** (Wild et al. v2.2 / Zhao et al. 2024 GRL). At each ice-base
+point we take the larger of a shear-driven and a buoyancy-driven melt estimate — "which process
+dominates the turbulent transfer."
 
-Applied via field-dependent flux BCs on the `top` immersed faces (the downward-facing ice
-base). Melt on steeply sloping ice faces (east/west immersed faces) is a v1 simplification —
-telling ice flanks apart from sea-floor faces needs face tagging, and that is exactly the
-boundary-parameterization refinement the cavity-LES program earmarks for development.
+- **Shear** — three-equation thermodynamics with γ = Γ·u★. To make it **resolution-independent**
+  the friction velocity is the log-law wall value `u★_shear = κ|U₁|/ln(z₁/z₀)` (not √(Cd)·|U₁|,
+  which drifts with Δz because |U₁| is sampled at the first cell). `z₀` is set so it recovers
+  √(Cd)·U at a fixed reference height (Cd = `--melt_Cd`, default 0.0022).
+- **Convective** — the velocity-independent Kerr & McConnochie scaling `ṁ_conv = c_B·|ΔT|^{4/3}`
+  (c_B = 2.85×10⁻⁷ m/s), recast as an equivalent `u★_conv ∝ |ΔT|^{1/3}` so the same solver
+  produces it. This is the key piece: it keeps melt realistic when the plume is slow (spin-up),
+  because it does not vanish as U→0.
+
+Constants are the Wild/Davis (Thwaites East) set: Γᵀ=0.0235, Γˢ=6.7×10⁻⁴, and λ₁,λ₂,λ₃ for the
+depth-dependent freezing point. These give **Pine-Island-ballpark melt** (≈ 3–50 m/yr across the
+cavity, higher on the deep warm steep grounding line) — check: grounding line ≈ 36, mid-cavity
+≈ 15, near the cold front ≈ 3 m/yr, with the convective branch dominant during spin-up. Momentum
+drag (the τ BCs) is **separate** and still uses the roughness drag.
+
+Applied via field-dependent flux BCs on the `top` immersed faces (downward-facing ice base).
+**Next refinements** (earmarked): make the convective branch explicitly basal-slope-dependent
+(McConnochie & Kerr), and treat melt on steeply sloping ice faces (needs face tagging).
 
 ## Tuning knobs
 - **Stratification** (`scripts/stratification.jl`): warm/cold end members `aT,cT / aS,cS`;
@@ -129,6 +140,9 @@ boundary-parameterization refinement the cavity-LES program earmarks for develop
   mask is evaluated on the native grid, so keels/topography are felt at grid resolution).
 - **Closure**: constant `ScalarDiffusivity(ν=κ=--nu)` to match the cavity project; for a true
   3-D LES switch to an SGS closure (AMD / Smagorinsky) — the 3-D driver does this by default.
+- **Melt shear drag** (`--melt_Cd`, default 0.0022): the shear drag in the max(shear,convective)
+  closure (see below). The convective branch is what sets melt at low shear, so this mostly
+  matters once the plume is fast. Momentum drag is separate.
 - **Tide**: `--tide` (amplitude m/s, 0 = off) and `--tide_period` (hours, default 12.42 = M2)
   add an idealized barotropic tide by oscillating the shelf-front sponge's u-target at the
   tidal frequency. The tidal exchange enters from the front and interacts with the basal

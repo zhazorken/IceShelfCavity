@@ -66,6 +66,11 @@ function parse_command_line_arguments()
         "--melt_slope";  help = "Basal-slope-dependent convective melt (McConnochie & Kerr): 1 = on, 0 = off"; default = 1; arg_type = Int
         "--slope_ref";   help = "Reference sinθ where the slope factor = 1 (default 0.03 ≈ 1.7°)"; default = 0.03; arg_type = Float64
         "--z0";          help = "Momentum roughness length [m] (lower ⇒ weaker drag ⇒ faster plume; default 0.1)"; default = 0.1; arg_type = Float64
+        "--coriolis";    help = "1 = rotating (FPlane at -75°); 0 = OFF (plume flows straight up-slope in u, no v deflection)"; default = 1; arg_type = Int
+        "--melt_mode";   help = "physical (max shear/convective) | slope (prescribed linear-in-slope melt)"; default = "physical"; arg_type = String
+        "--melt_min";    help = "slope mode: min melt rate [m/yr]"; default = 5.0;   arg_type = Float64
+        "--melt_max";    help = "slope mode: max melt rate [m/yr]"; default = 100.0; arg_type = Float64
+        "--slope_max_deg"; help = "slope mode: basal angle [deg] at which melt hits melt_max"; default = 20.0; arg_type = Float64
     end
     return parse_args(settings, as_symbols=true)
 end
@@ -173,22 +178,34 @@ u_bcs = FieldBoundaryConditions(immersed = τᵘ,
 v_bcs = FieldBoundaryConditions(immersed = τᵛ)
 w_bcs = FieldBoundaryConditions(immersed = τʷ)
 
-# Melt closure = max(shear, convective) (Wild et al.; scripts/melt_parameterization.jl). The
-# convective (Kerr) branch is velocity-independent, so melt is PIG-realistic even at low shear.
-# --melt_Cd = shear drag; z₁ (first-cell height) makes the shear u★ resolution-independent.
-# Per-x basal-slope factor from the ice-base geometry (extruded in y); indexed by x in the kernel.
+# Melt closure. --melt_mode=physical (default): max(shear[Cd], convective[Kerr·slope]) (Wild et
+# al.). --melt_mode=slope: a PRESCRIBED melt = clamp(linear-in-basal-slope-angle, min, max) [m/yr]
+# — a clean geometric buoyancy forcing (no thermodynamic feedback). Both index a per-x array.
 Δx_grid = params.Lx / params.Nx
-sfac_cpu = map(1:params.Nx) do i
-    xc = (i - 0.5) * Δx_grid; δ = 0.5Δx_grid
-    dtopdx = (top_interp(xc + δ) - top_interp(xc - δ)) / (2δ)
-    sinθ = abs(dtopdx) / sqrt(1 + dtopdx^2)
-    params.melt_slope == 1 ? slope_factor(sinθ, params.slope_ref) : 1.0
+if params.melt_mode == "slope"
+    mdot_cpu = map(1:params.Nx) do i
+        xc = (i - 0.5) * Δx_grid; δ = 0.5Δx_grid
+        θ = atand(abs((top_interp(xc + δ) - top_interp(xc - δ)) / (2δ)))          # basal slope angle [deg]
+        ṁ = clamp(params.melt_min + (params.melt_max - params.melt_min) * θ / params.slope_max_deg,
+                  params.melt_min, params.melt_max)                                # m/yr
+        ṁ / 3.15e7                                                                 # → m/s
+    end
+    melt_params = (; mdot = on_architecture(arch, collect(Float64, mdot_cpu)), dx = Δx_grid, Nx = params.Nx)
+    @info "Melt closure = SLOPE-LINEAR (prescribed)" melt_min=params.melt_min melt_max=params.melt_max slope_max_deg=params.slope_max_deg
+    T_melt = FluxBoundaryCondition(melt_heat_flux_slope_3d, field_dependencies=(:S,), parameters=melt_params)
+    S_melt = FluxBoundaryCondition(melt_salt_flux_slope_3d, field_dependencies=(:S,), parameters=melt_params)
+else
+    sfac_cpu = map(1:params.Nx) do i
+        xc = (i - 0.5) * Δx_grid; δ = 0.5Δx_grid
+        dtopdx = (top_interp(xc + δ) - top_interp(xc - δ)) / (2δ)
+        sinθ = abs(dtopdx) / sqrt(1 + dtopdx^2)
+        params.melt_slope == 1 ? slope_factor(sinθ, params.slope_ref) : 1.0
+    end
+    melt_params = (; Cd = params.melt_Cd, z1 = z₁, sfac = on_architecture(arch, collect(Float64, sfac_cpu)), dx = Δx_grid, Nx = params.Nx)
+    @info "Melt closure = max(shear[Cd], convective[Kerr·slope])" melt_Cd=params.melt_Cd slope=(params.melt_slope==1) slope_factor_range=(minimum(sfac_cpu), maximum(sfac_cpu))
+    T_melt = FluxBoundaryCondition(melt_heat_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
+    S_melt = FluxBoundaryCondition(melt_salt_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 end
-sfac_dev = on_architecture(arch, collect(Float64, sfac_cpu))
-melt_params = (; Cd = params.melt_Cd, z1 = z₁, sfac = sfac_dev, dx = Δx_grid, Nx = params.Nx)
-@info "Melt closure = max(shear[Cd], convective[Kerr·slope])" melt_Cd=params.melt_Cd slope=(params.melt_slope==1) slope_factor_range=(minimum(sfac_cpu), maximum(sfac_cpu))
-T_melt = FluxBoundaryCondition(melt_heat_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
-S_melt = FluxBoundaryCondition(melt_salt_flux_3d, field_dependencies=(:u, :v, :w, :T, :S), parameters=melt_params)
 T_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = T_melt), east = ValueBoundaryCondition(Tᵉ))
 S_bcs = FieldBoundaryConditions(immersed = ImmersedBoundaryCondition(top = S_melt), east = ValueBoundaryCondition(Sᵉ))
 #---
@@ -209,7 +226,10 @@ u_sponge = Relaxation(rate = 1/params.τ_nudge, mask = front_sponge_mask, target
 
 #+++ Model (CG Poisson solver for the immersed boundary; QAB2 = one pressure solve/step;
 #    AnisotropicMinimumDissipation SGS closure for the 3-D LES unless --nu>0 is given)
-coriolis = FPlane(; params.f)
+# --coriolis=0 disables rotation, so the plume rises straight up-slope (u,w) with no geostrophic
+# v deflection — avoids the y-periodic channel's artificial along-slope current.
+coriolis = params.coriolis == 0 ? nothing : FPlane(; params.f)
+params.coriolis == 0 && @info "Coriolis OFF — non-rotating up-slope plume"
 closure = params.nu > 0 ? ScalarDiffusivity(ν=params.nu, κ=params.nu) : AnisotropicMinimumDissipation()
 model = NonhydrostaticModel(grid;
                             timestepper = :QuasiAdamsBashforth2,

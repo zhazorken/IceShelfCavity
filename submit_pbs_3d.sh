@@ -3,7 +3,7 @@
 #PBS -N iceshelfcavity3d
 #PBS -o logs/iceshelfcavity3d.log
 #PBS -e logs/iceshelfcavity3d.log
-#PBS -l walltime=11:59:00
+#PBS -l walltime=23:59:00
 #PBS -q casper
 #PBS -l select=1:ncpus=4:ngpus=1:gpu_type=a100
 #PBS -M kenzhao@unc.edu
@@ -34,6 +34,10 @@ ASPECT="${ASPECT:-4}"              # horizontal:vertical aspect. Raise it to ref
                                    # horizontal cells (e.g. DZ=5,ASPECT=8 keeps Δx=Δy=40 m, halves Δz)
 LY="${LY:-10}"                     # periodic y extent in km
 Z0="${Z0:-0.1}"                    # momentum roughness (m); lower ⇒ weaker drag ⇒ faster plume
+CORIOLIS="${CORIOLIS:-1}"          # 1 = rotating; 0 = OFF (plume flows up-slope in u, no v deflection)
+WALL="${WALL:-23.5}"               # stop+checkpoint after this many HOURS (Casper max walltime 24 h;
+                                   # PBS directive above is 23:59). For a shorter job, also pass
+                                   # e.g.  qsub -l walltime=11:59:00 -v WALL=11.5 ...
 DY="${DY:-0}"                      # y spacing [m]; 0 = isotropic horizontal (Δy = Δx)
 STOP="${STOP:-5}"                  # stop time in DAYS
 MAXDT="${MAXDT:-60}"               # max time step [s]. Buoyancy spin-up is slow, so 5 s wastes
@@ -43,16 +47,20 @@ TIDE="${TIDE:-0.0}"
 TIDE_PERIOD="${TIDE_PERIOD:-12.42}"
 MELT_CD="${MELT_CD:-0.0022}"       # shear drag for the melt closure (Wild et al.); melt is
                                    # max(shear[this Cd], convective[Kerr]) — PIG-realistic
+MELT_MODE="${MELT_MODE:-physical}" # physical | slope (prescribed clamped-linear-in-slope melt)
+MELT_MIN="${MELT_MIN:-5}"          # slope mode: min melt [m/yr]
+MELT_MAX="${MELT_MAX:-100}"        # slope mode: max melt [m/yr]
 BATHY="${BATHY:-pineislandbath.csv}"
 OUTDIR="${OUTDIR:-/glade/work/$USER/cavity_runs}"
 mkdir -p "$OUTDIR" logs
 
 time $JULIA --project --pkgimages=no iceshelfcavity3d.jl \
-    --arch=gpu --aspect="$ASPECT" --dz="$DZ" --Ly="$LY" --dy="$DY" --z0="$Z0" --bathymetry="$BATHY" \
+    --arch=gpu --aspect="$ASPECT" --dz="$DZ" --Ly="$LY" --dy="$DY" --z0="$Z0" --coriolis="$CORIOLIS" --bathymetry="$BATHY" \
     --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt="$MAXDT" \
     --tide="$TIDE" --tide_period="$TIDE_PERIOD" --melt_Cd="$MELT_CD" \
+    --melt_mode="$MELT_MODE" --melt_min="$MELT_MIN" --melt_max="$MELT_MAX" \
     --cg_reltol=1e-5 --cg_maxiter=30 \
-    --wall_time_limit=11.5 --outdir="$OUTDIR" --simname="$SIM" \
+    --wall_time_limit="$WALL" --outdir="$OUTDIR" --simname="$SIM" \
     2>&1 | tee logs/${SIM}.out
 
 qstat -f $PBS_JOBID >> logs/iceshelfcavity3d.log

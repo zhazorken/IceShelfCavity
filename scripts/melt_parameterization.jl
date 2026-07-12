@@ -128,3 +128,16 @@ end
     return γˢ * (S_b - S)
 end
 #---
+
+#+++ SIMPLIFIED "slope-linear" melt (--melt_mode=slope): a PRESCRIBED, geometric melt rate.
+# ṁ(x) is precomputed by the driver [m/s] as a clamped linear function of the basal slope angle
+# (min…max m/yr). The heat flux is the latent cooling and the salt flux the freshwater dilution
+# implied by that melt. NOTE: this has NO thermodynamic feedback — the melt does not shut off in
+# cold water, so it can drive the near-ice layer below the local freezing point. It is meant as a
+# clean, controllable geometric BUOYANCY forcing for cavity-dynamics / superparameterization runs.
+@inline _mdot(x, p) = @inbounds p.mdot[clamp(unsafe_trunc(Int, x / p.dx) + 1, 1, p.Nx)]
+@inline melt_heat_flux_slope(x, z, t, S, p)       = -ρⁱ * Lᶠ * _mdot(x, p) / (ρʷ * cᵖʷ)   # latent cooling
+@inline melt_salt_flux_slope(x, z, t, S, p)       = -_mdot(x, p) * S                       # freshwater dilution
+@inline melt_heat_flux_slope_3d(x, y, z, t, S, p) = -ρⁱ * Lᶠ * _mdot(x, p) / (ρʷ * cᵖʷ)
+@inline melt_salt_flux_slope_3d(x, y, z, t, S, p) = -_mdot(x, p) * S
+#---

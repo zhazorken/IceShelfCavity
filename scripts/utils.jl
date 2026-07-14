@@ -1,4 +1,19 @@
 
+""" Centered boxcar smoothing of a series y(x) over a window `width` (same units as x).
+    Used to smooth the ice-base topography before building the immersed boundary. """
+function smooth_series(y, x, width)
+    width <= 0 && return collect(float.(y))
+    Δ = abs(x[2] - x[1])
+    half = max(1, round(Int, (width / Δ) / 2))
+    n = length(y)
+    ys = zeros(float(eltype(y)), n)
+    for i in 1:n
+        lo = max(1, i - half); hi = min(n, i + half)
+        ys[i] = sum(@view y[lo:hi]) / (hi - lo + 1)
+    end
+    return ys
+end
+
 """ Rounds `a` to the nearest even number """
 nearest_even(a) = Int(2*round(round(a) / 2))
 

@@ -67,6 +67,7 @@ function parse_command_line_arguments()
         "--slope_ref";   help = "Reference sinθ where the slope factor = 1 (default 0.03 ≈ 1.7°)"; default = 0.03; arg_type = Float64
         "--z0";          help = "Momentum roughness length [m] (lower ⇒ weaker drag ⇒ faster plume; default 0.1)"; default = 0.1; arg_type = Float64
         "--coriolis";    help = "1 = rotating (FPlane at -75°); 0 = OFF (plume flows straight up-slope in u, no v deflection)"; default = 1; arg_type = Int
+        "--smooth_ice";  help = "Smooth the ice-base topography with a boxcar this wide in x [m] (0 = off; e.g. 1500)"; default = 0.0; arg_type = Float64
         "--melt_mode";   help = "physical (max shear/convective) | slope (prescribed linear-in-slope melt)"; default = "physical"; arg_type = String
         "--melt_min";    help = "slope mode: min melt rate [m/yr]"; default = 5.0;   arg_type = Float64
         "--melt_max";    help = "slope mode: max melt rate [m/yr]"; default = 100.0; arg_type = Float64
@@ -95,7 +96,11 @@ include(locate("melt_parameterization.jl"))
 include(locate("stratification.jl"))
 
 bathymetry = get_bathymetry_from(params.bathymetry)
-top_interp = LinearInterpolation(bathymetry.x, bathymetry.top, extrapolation_bc=FlatBC())
+# Optionally smooth the ICE-BASE topography (only) with a boxcar `--smooth_ice` wide in x — this
+# removes the small-scale basal roughness for a controlled "smooth vs. rough geometry" comparison.
+ice_top = params.smooth_ice > 0 ? smooth_series(bathymetry.top, bathymetry.x, params.smooth_ice) : bathymetry.top
+params.smooth_ice > 0 && @info "Ice base smoothed with a $(params.smooth_ice) m boxcar in x"
+top_interp = LinearInterpolation(bathymetry.x, ice_top, extrapolation_bc=FlatBC())
 bottom_interp = LinearInterpolation(bathymetry.x, bathymetry.bottom, extrapolation_bc=FlatBC())
 
 let

@@ -35,6 +35,7 @@ ASPECT="${ASPECT:-4}"              # horizontal:vertical aspect. Raise it to ref
 LY="${LY:-10}"                     # periodic y extent in km
 Z0="${Z0:-0.1}"                    # momentum roughness (m); lower ⇒ weaker drag ⇒ faster plume
 CORIOLIS="${CORIOLIS:-1}"          # 1 = rotating; 0 = OFF (plume flows up-slope in u, no v deflection)
+SMOOTH="${SMOOTH:-0}"              # smooth the ice-base topography this wide in x [m] (0 = off; 1500 = 1.5 km)
 WALL="${WALL:-23.5}"               # stop+checkpoint after this many HOURS (Casper max walltime 24 h;
                                    # PBS directive above is 23:59). For a shorter job, also pass
                                    # e.g.  qsub -l walltime=11:59:00 -v WALL=11.5 ...
@@ -55,7 +56,8 @@ OUTDIR="${OUTDIR:-/glade/work/$USER/cavity_runs}"
 mkdir -p "$OUTDIR" logs
 
 time $JULIA --project --pkgimages=no iceshelfcavity3d.jl \
-    --arch=gpu --aspect="$ASPECT" --dz="$DZ" --Ly="$LY" --dy="$DY" --z0="$Z0" --coriolis="$CORIOLIS" --bathymetry="$BATHY" \
+    --arch=gpu --aspect="$ASPECT" --dz="$DZ" --Ly="$LY" --dy="$DY" --z0="$Z0" --coriolis="$CORIOLIS" \
+    --smooth_ice="$SMOOTH" --bathymetry="$BATHY" \
     --stop_time="$STOP" --output_interval=30 --fields3d_interval=6 --checkpoint_interval=0.5 --max_dt="$MAXDT" \
     --tide="$TIDE" --tide_period="$TIDE_PERIOD" --melt_Cd="$MELT_CD" \
     --melt_mode="$MELT_MODE" --melt_min="$MELT_MIN" --melt_max="$MELT_MAX" \
